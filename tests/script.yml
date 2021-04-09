@@ -1,0 +1,20 @@
+config:
+  target: 'https://d8ja2p2uoi.execute-api.us-east-1.amazonaws.com'
+  phases:
+    - duration: 10
+      arrivalRate: 5000
+  processor: "./loadTestFunction.js"          
+  # defaults:
+  #   headers:
+      # Authorization: 'Bearer <<ENTER YOUR JWT TOKEN HERE>>'
+scenarios:
+  - flow:
+    - function: "generateRandomData"
+    - post:
+        url: "/dev/vote"
+        json:
+          user: "{{ user }}"
+          vote: "{{ vote }}"
+          year: 2021
+          round: 1
+    - log: "Sent POST request to /dev/vote with {{ user }}, {{ vote }}"

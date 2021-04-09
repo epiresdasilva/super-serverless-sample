@@ -1,0 +1,14 @@
+{
+  "name": "super-serverless-sample",
+  "description": "",
+  "version": "0.1.0",
+  "dependencies": {
+    "pg": "^8.5.1",
+    "uuid": "^8.3.2"
+  },
+  "devDependencies": {
+    "serverless-apigateway-service-proxy": "^1.14.0",
+    "serverless-plugin-lambda-dead-letter": "^1.2.1",
+    "serverless-vpc-plugin": "^1.0.2"
+  }
+}

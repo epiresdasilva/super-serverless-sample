@@ -1,0 +1,178 @@
+service: super-serverless-sample
+frameworkVersion: '1.83.3'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  stage: dev
+  region: us-east-1
+  environment:
+    VOTE_TABLE: vote-${opt:stage, self:provider.stage}
+    VOTE_BAG_TABLE: vote-bag-${opt:stage, self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - "sqs:SendMessage"
+      Resource: !GetAtt RegisterVoteDLQ.Arn
+    - Effect: Allow
+      Action:
+        - "sqs:SendMessage"
+      Resource: !GetAtt RegisterVoteQueue.Arn
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:DeleteItem
+        - dynamodb:DescribeStream
+        - dynamodb:ListStreams
+      Resource: "arn:aws:dynamodb:*:*:*"
+    - Effect: Allow
+      Action:
+        - rds-data:BatchExecuteStatement
+        - rds-data:BeginTransaction
+        - rds-data:CommitTransaction
+        - rds-data:ExecuteStatement
+        - rds-data:RollbackTransaction
+      Resource: arn:aws:rds:${self:provider.region}:*:cluster:*
+  tags:
+    product: super-serverless-sample
+
+functions:
+  registerVote:
+    handler: handlers/vote_register.main
+    memorySize: 128
+    events:
+      - eventBridge:
+          pattern:
+            source:
+              - vote_register
+            detail-type:
+              - Vote
+    deadLetter:
+      targetArn:
+        GetResourceArn: RegisterVoteDLQ
+  counterVote:
+    handler: handlers/vote_counter.main
+    memorySize: 128
+    reservedConcurrency: 100
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - RegisterVoteQueue
+              - Arn
+          batchSize: 100
+    environment:
+      RDS_ENDPOINT: {"Fn::GetAtt": ["VoteAnalyticsDatabase","Endpoint.Address"]}
+          
+custom:
+  apiGatewayServiceProxies:
+    - eventbridge:
+        path: /vote
+        method: post
+        source: 'vote_register'
+        detailType: 'Vote'
+        eventBusName: default
+        cors: true
+  vpcConfig:
+    cidrBlock: '10.0.0.0/16'
+    createNatGateway: 2
+    createNetworkAcl: false
+    createDbSubnet: true
+    createFlowLogs: false
+    createBastionHost: false
+    bastionHostKeyName: MyKey
+    createNatInstance: false
+    createParameters: false
+    zones:
+      - us-east-1a
+      - us-east-1b
+      - us-east-1c
+    services:
+      - kms
+      - secretsmanager
+    subnetGroups:
+      - rds
+    exportOutputs: false
+
+resources:
+  Resources:
+    RegisterVoteQueue:
+      Type: 'AWS::SQS::Queue'
+      Properties:
+        QueueName: "RegisterVoteQueue"
+    RegisterVoteDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: RegisterVote-dl-queue
+    VoteDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        TableName: ${self:provider.environment.VOTE_TABLE}
+    VoteAnalyticsDatabase:
+      Type: AWS::RDS::DBCluster
+      Properties:
+        BackupRetentionPeriod: 1
+        DBSubnetGroupName: !Ref RDSSubnetGroup #recurso criado automaticamente pelo plugin serverless-vpc-plugin
+        Engine: aurora-postgresql
+        EngineMode: serverless
+        MasterUsername: vote_analytics
+        DatabaseName: vote_analytics
+        MasterUserPassword: vote_analytics
+        EnableHttpEndpoint: true
+        ScalingConfiguration:
+          AutoPause: false
+          MinCapacity: 2
+          MaxCapacity: 2
+        StorageEncrypted: true
+        VpcSecurityGroupIds:
+          - !Ref AppSecurityGroup #recurso criado automaticamente pelo plugin serverless-vpc-plugin
+    SecurityGroupIngress:
+      Type: 'AWS::EC2::SecurityGroupIngress'
+      Properties:
+        GroupId: !Ref AppSecurityGroup
+        IpProtocol: tcp
+        FromPort: 5432
+        ToPort: 5432
+        SourceSecurityGroupId: !GetAtt AppSecurityGroup.GroupId
+    SecurityGroupEgress:
+      Type: 'AWS::EC2::SecurityGroupEgress'
+      Properties:
+        GroupId: !Ref AppSecurityGroup
+        IpProtocol: tcp
+        FromPort: 5432
+        ToPort: 5432
+        SourceSecurityGroupId: !GetAtt AppSecurityGroup.GroupId
+    SecurityGroupEgress2:
+      Type: 'AWS::EC2::SecurityGroupEgress'
+      Properties:
+        GroupId: !Ref AppSecurityGroup
+        IpProtocol: -1
+        SourceSecurityGroupId: !GetAtt AppSecurityGroup.GroupId
+    RegisterVoteLambdaFunctionInvokeConfig:
+      Type: AWS::Lambda::EventInvokeConfig
+      Properties:
+        DestinationConfig:
+            OnSuccess:
+              Destination: !GetAtt RegisterVoteQueue.Arn
+            OnFailure:
+              Destination: !GetAtt RegisterVoteDLQ.Arn
+        FunctionName: !Ref RegisterVoteLambdaFunction
+        Qualifier: $LATEST
+  extensions:
+    CounterVoteEventSourceMappingSQSRegisterVoteQueue:
+      Properties:
+        MaximumBatchingWindowInSeconds: 1
+plugins:
+  - serverless-apigateway-service-proxy
+  - serverless-plugin-lambda-dead-letter
+  - serverless-vpc-plugin
