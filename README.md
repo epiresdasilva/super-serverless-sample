@@ -30,4 +30,35 @@ create table vote_bag_count (id serial primary key, name text, vote_count intege
 
 ## Estatísticas
 
-**Em breve.**
+### Teste de carga
+
+* Nos testes mais simples: 5k requisições por segundo
+    * 10 segundos de duração
+    * 50k requisições no total
+* Testes de processamento: 20k requisições por segundo
+    * 60 segundos de duração
+    * 1,2mi requisições no total
+    * Tempo de processamento do placar: 25 minutos
+
+### Desenvolvimento
+
+O desenvolvimento todo foi realizado dentro de uma semana, trabalhando somente em dias úteis em torno de 2 horas por dia. Um total de 10 horas de desenvolvimento.
+
+### Custos
+
+Os valores abaixo são do intervalo todo de desenvolvimento, portanto esses custos incluem todos os testes realizados inúmeras vezes e não somente o teste final que resultou na estatística citada anteriormente.
+
+* RDS: US$ 2,90 / dia
+* VPC: US$ 1,44 / dia
+* Lambda: US$ 1,00 total
+* API Gateway: US$ 7,12 total
+* DynamoDB: US$ 2,46 total
+* SQS: US$ 0,21 total
+* **Total: US$ 52,57**
+
+## O que ainda poderia ser feito
+
+* Abordagem mais robusta de dados: processar as mensagens mais rapidamente
+    * Near realtime com Kinesis, por exemplo
+* Pipeline para deploy automatizado: não precisar de deploy manual
+* Utilização de SecretsManager: basicamente para proteger a credencial do banco de dados RDS
