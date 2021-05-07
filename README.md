@@ -14,6 +14,21 @@ Explicação sobre cada recurso utilizado
 * SQS: envio de mensagens em lotes para processo assíncrono de contagem dos votos. O envio de lotes proporciona uma contagem mais rápida. Ao mesmo tempo, o SQS permite um processamento alto e controlado para não sobrecarregar o banco de dados
 * RDS (Aurora Serverless): armazenamento da contagem dos votos, permitindo o incremento do valor e emissão de relatórios de forma mais otimizada
 
+### Desafio da definição da arquitetura
+
+Esse desenho de arquitetura mostrado anteriormente é a versão final, mas precisei iterar sobre ele para chegar nessas conclusões. Por isso, quero registrar também as escolhas que não atenderam as necessidades.
+Para começar, é importante dizer que serverless te entrega escala sem preocupação, mas isso não significa que você terá a escala necessária para resolver o seu problema. Isso porque cada serviço tem suas característica e apesar de em termos de infraestrutura você não ficar na mão, você pode ainda ter problema de vazão.
+
+#### API Gateway e SQS
+
+Na primeira tentativa, utilizei o SQS conectado ao API Gateway para receber os votos de forma assíncrona direto do endpoint. Em termos de disponibilidade não tive nenhum problema, mas o consumo dessas mensagens não atendia a velocidade de contabilização de votos que precisava.
+Por esse motivo, o uso de um Broker como o EventBridge fez mais sentido.
+
+#### DynamoDB Stream
+
+Também na primeira versão da arquitetura, ao invés do uso de SQS como Destination da Lambda de registro de votos, eu havia utilizado a Lambda conectada no DynamoDB Stream para ouvir os eventos de cadastro. Em termos funcionais funcionou muito bem, mas assim como o Kinesis, o DynamoDB Stream trabalha com o conceito de `shard`. Sendo assim, só é possível paralelizar a mesma quantidade de `shards` configuradas no DynamoDB.
+Mesmo tendo a opção de paralelizar e aumentar a capacidade, ainda ficou aquém da velocidade necessária para o problema.
+
 ## Executar
 
 Esse projeto utiliza Serverless Framework para gerar a infraestrutura como código. Por esse motivo, fica fácil reproduzir essa aplicação em sua própria conta da AWS.
